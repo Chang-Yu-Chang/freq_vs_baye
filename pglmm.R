@@ -51,6 +51,9 @@ mod2 <- brm(
     control = list(adapt_delta = 0.99)
 )
 mod2
+
+"WHY DOES THE MODEL FAIL TO CONVERGE??? "
+
 pp_check(mod2)
 describe_posterior(mod2)
 
@@ -75,10 +78,14 @@ bayes_R2(mod2)
 
 ## variance explained by random effects (phylogeny)
 pp <- as_draws_df(mod2) %>% as_tibble()
-ran_samples <- select(pp, starts_with("r_phylo"))
-var_ran <- apply(ran_samples, 1, var) # posterior distribution of variance of random effects
-var_tot <- var_ran + pp$sigma^2 # total variance
-ps <- var_ran / var_tot
+names(pp)
+ran_samples_phylo <- select(pp, starts_with("r_phylo"))
+ran_samples_sp <- select(pp, starts_with("r_species"))
+var_ran_phylo <- apply(ran_samples_phylo, 1, var) # posterior distribution of variance of random effects
+var_ran_sp <- apply(ran_samples_sp, 1, var) # posterior distribution of variance of random effects
+
+var_tot <- var_ran_phylo + var_ran_sp + pp$sigma^2 # total variance
+ps <- var_ran_phylo / var_tot
 hist(ps)
 mean(ps)
 quantile(ps, c(0.05, 0.5, 0.95))
