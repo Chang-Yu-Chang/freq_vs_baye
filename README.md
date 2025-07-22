@@ -1,2 +1,65 @@
 # freq_vs_baye
-A side-by-side comparison of frequentist and bayesian models
+
+A learing note for side-by-side comparison of frequentist and bayesian models
+
+```
+library(brms)
+library(easystats)
+```
+
+### Ordinary linear regression 
+
+`lm.R`
+
+- Compare `lm` and `brm`
+- Hand calculated R^2 and F statistics from `lm` object
+
+
+### Linear mixed model
+
+`lmm.R`
+
+- Compared `lme4::lmer` and `brm`
+- Perform variance component analysis. Use `VarCorr` for `lmer` object and compute per-sample group variance over total variance for `brm`
+
+### Generalized linear model
+
+`glm.R`
+
+- Compare `glmmTMB` and `brm`
+- Simulate a poisson and a negative binomial
+- Random effect only includes one predictor (`group`)
+- Estimate residuals at the response level
+- Estimate pseudo R2 based on 1 - var(residuals) / var(observed Y)
+- Bayesian R2
+
+
+### Generalized linear mixed model
+
+`glmm.R`
+
+- Compare `glmmTMB` and `brm`
+- Simulate a poisson  binomial
+- Random effect only includes one predictor (`group`)
+- Hand calculate Pearson residual
+- Bayesian R2
+- Estimate random effect of each group by the mean across posterior samples
+- Estimate the posterior distribution of proportion of variance explained by random effects
+
+### Phylogenetic linear mixed model 
+
+`plmm.R`
+
+- Only `brm`
+- Random effect includes phylogenetic effect (`phylo_cov`)
+- Phylogenetic effect is sampled from Multivariate Normal Distribution based on the phylo covariance matrix
+- Compare one measurement per species and multiple measurements per species
+
+### Phylogenetic generalized mixed model
+
+`pglmm.R`
+
+- Only `brm`
+- Random effect includes phylogenetic effect (`phylo_cov`) and species effect that is not captured by shared phylogeny (`species`)
+- Phylogenetic effect is sampled from Multivariate Normal Distribution based on the phylo covariance matrix
+- Multiple measurements per species
