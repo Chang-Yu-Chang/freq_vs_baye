@@ -52,14 +52,35 @@ library(easystats)
 
 - Only `brm`
 - Random effect includes phylogenetic effect (`phylo_cov`)
-- Phylogenetic effect is sampled from Multivariate Normal Distribution based on the phylo covariance matrix
+- Phylogenetic effect is sampled from Multivariate Gaussian Distribution based on the phylo covariance matrix
 - Compare one measurement per species and multiple measurements per species
+- Sampling from a multivariate Gaussian based on a cov is equivalent to sampling from a gaussian multiplied by the Cholesky decomposition of the cov
 
-### Phylogenetic generalized mixed model
+- Well it seems that the estimate of phylo variance is only trustworthy when there are 50-100 species
+
+### GLMM with covariance matrix 
+
+`glmm_cov.R`
+
+- Testing simple covariance matrix
+
+
+### Phylogenetic generalized linear mixed model
 
 `pglmm.R`
 
 - Only `brm`
 - Random effect includes phylogenetic effect (`phylo_cov`) and species effect that is not captured by shared phylogeny (`species`)
 - Phylogenetic effect is sampled from Multivariate Normal Distribution based on the phylo covariance matrix
+- Generate counts by negative binomial
 - Multiple measurements per species
+- Compare two models: species mean or raw species value
+
+- If the number of species is too small, the intrinsic variation in NB can mask phylogenetic and species effect.
+
+### Phylogenetic generalized linear mixed model with different distribution
+
+`pglmm2.R`
+
+- Generate counts by zero-inflated negative binomial
+

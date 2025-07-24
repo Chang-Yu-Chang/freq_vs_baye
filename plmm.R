@@ -4,46 +4,42 @@ library(tidyverse)
 library(easystats)
 library(ape)
 library(brms)
-#library(MASS) # for multivariate gaussian
+#library(MASS) # for sampling from multivariate gaussian
 
 # One measurement per species ----
-# Parameters
 set.seed(123)
-n_species <- 20
-#measurements_per_species <- 15
+n_species <- 100
 
 # Create phylogeny
 phylo <- rtree(n = n_species)
+phylo <- chronopl(phylo, lambda = 1) # so the tree is ultrametric
 species <- phylo$tip.label
 plot(phylo, main = "Mock Phylogeny")
-phylo_cov <- vcv(phylo)
 
 # Simulate phylogenetic effects
-# mvrnorm: Simulate from a Multivariate Normal Distribution
-phylo_effects <- MASS::mvrnorm(n = 1, mu = rep(0, nrow(phylo_cov)), Sigma = phylo_cov)
-names(phylo_effects) <- species
-sd(phylo_effects) # the phylo sd
+phylo_cov <- vcv(phylo) # the diagonals should all be 1, meaning the variance is 1
+sd_phylo <- 5 # the sd of brownian motion
+phylo_effects <- MASS::mvrnorm(n = 1, mu = rep(0, n_species), Sigma = phylo_cov * sd_phylo^2)
 
 # Generate data: one measurements per species
-X <- rnorm(n_species, 0, 1)
-Y <- 2 + 5 * X + 10*phylo_effects[species] + rnorm(n_species, 0, 1)
-tb <- tibble(phylo = species, X = X, Y = Y)
+Y <- 5 + phylo_effects + rnorm(n_species, 0, 1)
+tb <- tibble(phylo = species, Y = Y)
 
 # Fit the model with phylocentric random effect
 mod <- brm(
-    Y ~ X + (1|gr(phylo, cov = phylo_cov)),
+    Y ~ 1 + (1|gr(phylo, cov = phylo_cov)),
     data = tb,
     data2 = list(phylo_cov = phylo_cov),
     chains = 2, cores = 2, iter = 10000, thin = 10, seed = 123
 )
-
+mod
 pp_check(mod)
-describe_posterior(mod)
 
 # phylogenetic signal
 hyp <- hypothesis(mod, class = NULL, "sd_phylo__Intercept^2 / (sd_phylo__Intercept^2 + sigma^2) = 0")
 plot(hyp)
 
+if (F) {
 # Variance components
 set.seed(1)
 pp <- posterior_predict(mod)
@@ -66,33 +62,32 @@ hist(ps)
 mean(ps)
 quantile(ps, c(0.05, 0.5, 0.95))
 
+}
+
 
 # Repeated measurements per species ----
-# Parameters
 set.seed(123)
-n_species <- 10
+n_species <- 50
 measurements_per_species <- 10
+n_total <- n_species*measurements_per_species
 
 # Create phylogeny
-phylo <- rtree(n = n_species)
-species <- phylo$tip.label
+phylo <- rtree(n_species)
+phylo <- chronopl(phylo, lambda = 1)
+species <- rep(phylo$tip.label, each = measurements_per_species)
 plot(phylo, main = "Mock Phylogeny")
-phylo_cov <- vcv(phylo)
 
 # Simulate phylogenetic effects
-# mvrnorm: Simulate from a Multivariate Normal Distribution
-phylo_effects <- MASS::mvrnorm(n = 1, mu = rep(0, nrow(phylo_cov)), Sigma = phylo_cov)
-names(phylo_effects) <- species
+phylo_cov <- vcv(phylo) # the diagonals should all be 1, meaning the variance is 1
+sd_phylo <- 5 # the sd of brownian motion
+phylo_effects <- MASS::mvrnorm(n = 1, mu = rep(0, n_species), Sigma = phylo_cov * sd_phylo^2)
 
-# Simulate species effect
-# Simulate response
-sp_group <- rep(species, each = measurements_per_species)
-X <- rnorm(n_species*measurements_per_species, 0, 1)
-Y <- 2 + 5 * X + 10*phylo_effects[sp_group] + rnorm(n_species*measurements_per_species, 0, 1)
-tb <- tibble(phylo = sp_group, X = X, Y = Y)
 
-# species mean
-tb <- tb %>%
+# Generate data: repeated measurements per species
+X <- rnorm(n_total, 0, 1)
+Y <- 5 + 2*X + phylo_effects[species]
+tb <- tibble(phylo = species, X = X, Y = Y) %>%
+    # species mean
     group_by(phylo) %>%
     mutate(X_bet = mean(X), X_wit = X - X_bet)
 
@@ -105,11 +100,14 @@ mod2 <- brm(
 )
 
 pp_check(mod2)
-describe_posterior(mod2)
+mod2
 
 # phylogenetic signal
 hyp <- hypothesis(mod2, class = NULL, "sd_phylo__Intercept^2 / (sd_phylo__Intercept^2 + sigma^2) = 0")
 plot(hyp)
+
+
+if (F) {
 
 # Variance components
 set.seed(1)
@@ -131,18 +129,4 @@ ps <- var_ran / var_tot
 hist(ps)
 mean(ps)
 quantile(ps, c(0.05, 0.5, 0.95))
-
-
-
-plot(phylo)
-
-tb %>%
-    mutate(phylo = factor(phylo, species)) %>%
-    ggplot() +
-    geom_col(data = distinct(tb, phylo, X_bet), aes(x = phylo, y = X_bet)) +
-    geom_jitter(aes(x = phylo, y = X), width = .1) +
-    coord_flip(clip = "off") +
-    theme_bw() +
-    theme() +
-    guides() +
-    labs()
+}

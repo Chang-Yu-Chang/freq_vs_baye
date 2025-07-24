@@ -69,8 +69,9 @@ pp_check(brm_model)
 # Compute Bayesian R2
 bayes_R2(brm_model)
 
-
 # Variance components
+## Theoretical variance components
+
 ## Variance random effect per each posterior sample
 var_ra_samples <- as_draws_df(brm_model) %>%
     as_tibble() %>%
