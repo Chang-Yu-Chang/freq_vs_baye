@@ -27,11 +27,19 @@ library(easystats)
 `glm.R`
 
 - Compare `glmmTMB` and `brm`
-- Simulate a poisson and a negative binomial
-- Random effect only includes one predictor (`group`)
-- Estimate residuals at the response level
-- Estimate pseudo R2 based on 1 - var(residuals) / var(observed Y)
-- Bayesian R2
+- Simulate 6 types of response distributions
+    - gaussian
+    - logistic
+    - poisson
+    - negative binomial
+    - zero-inflated poisson
+    - zero-inflated negative binomial
+- Estimate R2 and Bayesian R2
+- Estimate probablity of zero inflation
+
+
+- For GLM, the variance is usually calculated at the latent scale. It's tricky to calculate the R2 in glm because of the latent vs response scales
+
 
 
 ### Generalized linear mixed model
