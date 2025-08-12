@@ -13,7 +13,7 @@ library(easystats)
 
 - Compare `lm` and `brm`
 - Hand calculated R^2 and F statistics from `lm` object
-
+- Compute bayesian R2, using var_fit / (var_fit + var_res), where var_fit is the variance among the expectations of the new data; var_res is the empirical residual variance
 
 ### Linear mixed model
 
@@ -21,6 +21,7 @@ library(easystats)
 
 - Compared `lme4::lmer` and `brm`
 - Perform variance component analysis. Use `VarCorr` for `lmer` object and compute per-sample group variance over total variance for `brm`
+- Compute bayesian R2, using var_fit / (var_fit + var_res), where var_fit is the variance among the expectations of the new data; var_res is the empirical residual variance
 
 ### Generalized linear model
 
@@ -35,11 +36,10 @@ library(easystats)
     - zero-inflated poisson
     - zero-inflated negative binomial
 - Estimate R2 and Bayesian R2
-- Estimate probablity of zero inflation
-
-
-- For GLM, the variance is usually calculated at the latent scale. It's tricky to calculate the R2 in glm because of the latent vs response scales
-
+- Hand calculate bayesian R2, basically the empirical R2 = var_mu / (var_mu + var_res), whereas var_mu is the var of predicted response, var_res is the empirical residual variance
+    - Bayesian R2 is estaimted at the response (data, or count) scale
+- Estimate probability of zero inflation
+- For GLM, tt's tricky to calculate the R2 in glm because of the latent vs response scales
 
 
 ### Generalized linear mixed model

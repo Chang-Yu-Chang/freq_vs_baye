@@ -58,9 +58,9 @@ tb %>%
 mod3 <- glmmTMB(Y3 ~ X, data = tb, family = nbinom2)
 summary(mod3)
 
-# Prediction at the resposne scale. There are three ways to do it
+# Prediction at the response scale. There are three ways to do it
 predict(mod3, type = "link") # prediction at the latent scale
-exp(predict(mod3)) # predict at the latent scale and apply the link function
+exp(predict(mod3)) # predict at the latent scale and apply the inversed link function
 fitted(mod3) # predicted at the response scale
 predict(mod3, type = "response") # predicted at the response scale
 
@@ -77,21 +77,24 @@ var_tot <- var(Y3) # total variance in the observation
 ## Bayesian
 mod3_baye <- brm(Y3 ~ X, data = tb, family = negbinomial, chains = 2, cores = 2, iter = 10000, thin = 10, seed = 123, control = list(adapt_delta = 0.95))
 pp_check(mod3_baye) # posterior prediction checks
-as_draws_df(mod3_baye)$shape %>% mean # estimated dispersion parameter
+as_draws_df(mod3_baye)$shape %>% median # estimated dispersion parameter
 
 # Variance components
-pfit <- posterior_epred(mod3_baye) # fitted values (mu)
+pfit <- posterior_epred(mod3_baye) # fitted values (mu). The same as posterior_linpred(mod3_baye, transform = T)
 var_fit_samples <- apply(pfit, 1, var) # variance of fitted values (mu) across samples per draw
-shapes <- as_draws_df(mod3_baye)$shape # Estimated shape (k) parameter
-var_res_samples <- map_dbl(1:nrow(pfit), function(i) (mean(pfit[i,] + pfit[i,]^2/shapes[i]))) # NB variance = mu + mu^2 / k per data point per draw. Average across data point to get it per draw
-quantile(var_fit_samples / ( var_fit_samples + var_res_samples), c(0.05, 0.5, 0.95)) # this should be the same as bayes R2
-bayes_R2(mod3_baye) # Compute Bayesian R2
+y <- model.response(model.frame(mod3_baye))
+var_res_samples <- apply(pfit, 1, function (m) var(y-m))
+# shapes <- as_draws_df(mod3_baye)$shape # Estimated shape (k) parameter
+# var_res_samples <- map_dbl(1:nrow(pfit), function(i) (mean(pfit[i,] + pfit[i,]^2/shapes[i]))) # NB variance = mu + mu^2 / k per data point per draw. Average across data point to get it per draw
+br2 <- var_fit_samples / ( var_fit_samples + var_res_samples)
+c(mean(br2), sd(br2), quantile(br2, c(0.025, 0.975))) # this should be the same as bayes R2
+bayes_R2(mod3_baye)
 
 # Frequenstist ----
 tb_freq <- tibble(name = paste0("Y", c("", 1:5)), mod = rep(list(NA), 6))
 
 tb_freq$mod[[1]] <- glmmTMB(Y ~ X, data = tb, family = gaussian)
-tb_freq$mod[[2]] <- glmmTMB(Y1 ~ X, data = tb, family = bernoulli)
+tb_freq$mod[[2]] <- glmmTMB(Y1 ~ X, data = tb, family = binomial(link = "logit"))
 tb_freq$mod[[3]] <- glmmTMB(Y2 ~ X, data = tb, family = poisson)
 tb_freq$mod[[4]] <- glmmTMB(Y3 ~ X, data = tb, family = nbinom2)
 tb_freq$mod[[5]] <- glmmTMB(Y4 ~ X, data = tb, family = poisson, ziformula = ~1)
@@ -104,34 +107,73 @@ var_fit / (var_fit + sigma(tb_freq$mod[[1]])^2)
 r2(tb_freq$mod[[1]])
 
 ## Logistic. p(1-p)
-p <- fitted(tb_freq$mod[[2]])
-mean(p * (1-p))
+### Variance-partition R² on the probability scale (intuitive)
+p <- fitted(tb_freq$mod[[2]], type = "response")
+var(p) / (var(p) + mean(p * (1 - p)))
+### Tjur’s
+p1 <- mean(p[tb$Y1 == 1])
+p0 <- mean(p[tb$Y1 == 0])
+p1 - p0
 r2(tb_freq$mod[[2]])
+### Latent scale (Nakagawa & Schielzeth)
+eta <- predict(tb_freq$mod[[2]], type = "link")
+var(eta) / (var(eta) + (pi^2/3))
+
 
 ## Poisson. var(poi) = mean(mu)
-# var_fit <- var(predict(tb_freq$mod[[3]], type = "link"))
-# var_res <- mean(predict(tb_freq$mod[[3]], type = "response"))
-# var_fit / (var_fit + var_res)
-# 1 - var(residuals(tb_freq$mod[[3]], type = "response")) / var(tb$Y3)
-r2(tb_freq$mod[[3]]) # pseudo-R²
+### Data (count) scale
+m <- tb_freq$mod[[3]]
+p <- fitted(m, type = "response")  # μ_i
+var(p) / (var(p) + mean(p))
+
+### pseudo R2
+m_null <- update(m, . ~ 1) # null model
+ll_full <- as.numeric(logLik(m))
+ll_null <- as.numeric(logLik(m_null))
+n <- nobs(m)
+r2_cs <- 1 - exp((2/n) * (ll_null - ll_full)) # Cox–Snell
+r2_cs
+r2_coxsnell(tb_freq$mod[[3]])
+dev_full <- deviance(m)
+ll_sat   <- ll_full + dev_full/2 # Saturated log-likelihood for the full model
+r2_nag <- r2_cs / (1 - exp((2/n) * (ll_null - ll_sat))) # Nagelkerke using saturated LL in the denominator (matches performance)
+r2_nagelkerke(tb_freq$mod[[3]])
 
 ## Negative binomial
-# var_fit <- var(fitted(tb_freq$mod[[4]]))
-# shape <- sigma(tb_freq$mod[[4]]) # this is the shape parameter, not sigma per se
-# mu <- mean(fitted(tb_freq$mod[[4]]))
-# var_nb <- mu + mu^2/shape
-# var_fit / (var_fit + var_nb)
 r2(tb_freq$mod[[4]])
 
 ## ZIP
 r2(tb_freq$mod[[5]])
-z <- fixef(tb_freq$mod[[5]])[[2]][[1]] # estimated zi parameter
-exp(z) / (1+exp(z)) # estimated probability of structural zeros in the
+### pseudo R2
+r2_nagelkerke(tb_freq$mod[[5]])
+### Data (count) scale
+lambda <- predict(tb_freq$mod[[5]], type = "response")     # Poisson mean (λ_i) for the count component
+pi_zi  <- predict(tb_freq$mod[[5]], type = "zprob")        # zero-inflation prob (π_i)
+mu     <- (1 - pi_zi) * lambda # overall mean including ZI
+var_mu <- var(mu)
+res_var_i <- mu + (pi_zi/(pmax(1 - pi_zi, 1e-12))) * mu^2   # per-observation ZIP variance
+var_mu / (var_mu + mean(res_var_i))
+### empirical.  frequentist analogue of bayes_R2
+y <- model.response(model.frame(tb_freq$mod[[5]]))
+var(mu) / (var(mu) + var(y - mu))
+
 
 ## ZINB
+### pseudo R2
 r2(tb_freq$mod[[6]])
-z <- fixef(tb_freq$mod[[6]])[[2]][[1]] # estimated zi parameter
-exp(z) / (1+exp(z)) # estimated probability of structural zeros in the
+### Data (count) scale
+lambda <- predict(tb_freq$mod[[6]], type = "response")     # Poisson mean (λ_i) for the count component
+pi_zi  <- predict(tb_freq$mod[[6]], type = "zprob")        # zero-inflation prob (π_i)
+mu     <- (1 - pi_zi) * lambda # overall mean including ZI
+var_mu <- var(mu)
+res_var_i <- mu + (pi_zi/(pmax(1 - pi_zi, 1e-12))) * mu^2   # per-observation ZIP variance
+var_mu / (var_mu + mean(res_var_i))
+### empirical.  frequentist analogue of bayes_R2
+m  <- tb_freq$mod[[6]]
+y  <- model.response(model.frame(m))
+mu <- predict(m, type = "response")   # overall mean including ZI
+var(mu) / (var(mu) + var(y - mu))
+
 
 
 # Bayesian ----
@@ -143,33 +185,50 @@ tb_baye$mod[[4]] <- brm(Y3 ~ X, data = tb, family = negbinomial, chains = 2, cor
 tb_baye$mod[[5]] <- brm(bf(Y4 ~ X, zi ~ 1), data = tb, family = zero_inflated_poisson, chains = 2, cores = 2, iter = 10000, thin = 10, seed = 123, control = list(adapt_delta = 0.95))
 tb_baye$mod[[6]] <- brm(bf(Y5 ~ X, zi ~ 1), data = tb, family = zero_inflated_negbinomial, chains = 2, cores = 2, iter = 10000, thin = 10, seed = 123, control = list(adapt_delta = 0.95))
 
+# Extract observed response generically
+.get_y <- function(mod) {
+    model.response(model.frame(mod))
+}
+
+# 2) Empirical R2 computed from posterior draws (matches bayes_R2 logic)
+#    R2_draw = Var(mu_draw) / ( Var(mu_draw) + Var(y - mu_draw) )
+r2_from_draws <- function(mod, ndraws = NULL) {
+    mu <- posterior_epred(mod, ndraws = ndraws)  # draws x N; on response scale; includes ZI if any
+    y  <- .get_y(mod)
+
+    var_mu   <- apply(mu, 1, var)
+    var_res  <- apply(mu, 1, function(m) var(y - m))
+    r2_draws <- var_mu / (var_mu + var_res)
+
+    tibble(
+        mean   = mean(r2_draws),
+        sd     = sd(r2_draws),
+        q2.5   = quantile(r2_draws, 0.025),
+        q50    = quantile(r2_draws, 0.50),
+        q97.5  = quantile(r2_draws, 0.975)
+    )
+}
+
 # Variance and bayesian R2, which is computed at the latent scale
 ## Gaussian
 pp_check(tb_baye$mod[[1]])
-var_fit_samples <- apply(posterior_epred(tb_baye$mod[[1]]), 1, var)
-var_res_samples <- as_draws_df(tb_baye$mod[[1]])$sigma^2
-quantile(var_fit_samples / (var_fit_samples + var_res_samples), c(0.05, 0.5, 0.95))
+r2_from_draws(tb_baye$mod[[1]])
 bayes_R2(tb_baye$mod[[1]])
 
 ## Logistic
-# pfit <- posterior_linpred(tb_baye$mod[[2]], transform = F) # linear predictor
-# var_fit_samples <- apply(pfit, 1, var)
-# var_res_samples <- pi^2 / 3 # theoretical residual variance of logistic regression
-# quantile(var_fit_samples / ( var_fit_samples + var_res_samples), c(0.05, 0.5, 0.95))
 pp_check(tb_baye$mod[[2]])
+r2_from_draws(tb_baye$mod[[2]])
 bayes_R2(tb_baye$mod[[2]])
 
 ## Poisson
-# pfit <- posterior_epred(tb_baye$mod[[3]]) # at the response scale
-# res <- pfit - apply(pfit, 1, mean)
-# var_res_samples <- apply(res, 1, var)
-# quantile(1 - var_res_samples/var(tb$Y2), c(0.05, 0.5, 0.95)) # ok I give up. it's
 pp_check(tb_baye$mod[[3]])
+r2_from_draws(tb_baye$mod[[3]])
 bayes_R2(tb_baye$mod[[3]])
 
 ## Negative binomial
 pp_check(tb_baye$mod[[4]])
-as_draws_df(tb_baye$mod[[4]])$shape %>% mean # estimated dispersion parameter
+as_draws_df(tb_baye$mod[[4]])$shape %>% median # estimated dispersion parameter
+r2_from_draws(tb_baye$mod[[4]])
 bayes_R2(tb_baye$mod[[4]])
 
 ## ZIP
@@ -177,12 +236,14 @@ pp_check(tb_baye$mod[[5]])
 tb_baye$mod[[5]]
 z <- as_draws_df(tb_baye$mod[[5]])$Intercept_zi
 (exp(z) / (1+exp(z))) %>% mean # probability of an observation to be structurally zero
+r2_from_draws(tb_baye$mod[[5]])
 bayes_R2(tb_baye$mod[[5]])
 
 ## ZINB
 pp_check(tb_baye$mod[[6]])
 tb_baye$mod[[6]]
-as_draws_df(tb_baye$mod[[6]])$shape %>% mean # estimated dispersion parameter
+as_draws_df(tb_baye$mod[[6]])$shape %>% median # estimated dispersion parameter
 z <- as_draws_df(tb_baye$mod[[6]])$Intercept_zi
 (exp(z) / (1+exp(z))) %>% mean # probability of an observation to be structurally zero
+r2_from_draws(tb_baye$mod[[6]])
 bayes_R2(tb_baye$mod[[6]])

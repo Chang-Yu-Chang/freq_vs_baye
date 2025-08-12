@@ -1,4 +1,5 @@
 #' Compare lm results from lm and brms
+#'
 
 library(tidyverse)
 library(brms)
@@ -65,30 +66,22 @@ mod2 <- brm(Y ~ X, data=df, chains=2, cores=2,iter=2000,seed=123)
 fixef(mod2)
 plot(mod2) # ok it shows the average across chains and only uses iterations after burnins
 
-# Estiamte distribution
+# Estimate distribution
 as_draws_df(mod2) %>%
     as_tibble %>%
-    #filter(.chain == 2) %>%
     ggplot() +
     geom_histogram(aes(x = sigma), binwidth = 0.1, color = 1, fill = "white") +
     theme_classic()
 
 
-# R2
-fitted_samples <- fitted(mod2, summary = F)
-dim(fitted_samples)
+# Bayes R2
+mu <- posterior_linpred(mod2)
+var_mu <- apply(mu, 1, var)
+y <- model.response(model.frame(mod2))
+var_res <- apply(mu, 1, function(m) var(y-m))
 
-n_samples <- ndraws(mod2)
-R2_samples <- numeric(n_samples)
-
-for (s in 1:n_samples) {
-    Y_pred_s <- fitted_samples[s,]
-    sst <- sum((Y - mean(Y))^2)
-    sse <- sum((Y - Y_pred_s)^2)
-    R2_samples[s] <- 1-sse/sst
-}
-
-median(R2_samples)
-sd(R2_samples)
-quantile(R2_samples, probs = c(0.025, 0.5, 0.975))
+br2 <- var_mu / (var_mu + var_res)
+quantile(br2, probs = c(0.025, 0.5, 0.975))
+mean(br2)
+sd(br2)
 bayes_R2(mod2)
