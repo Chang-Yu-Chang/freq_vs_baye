@@ -79,26 +79,33 @@ var_iid <- dr[["sd_sp_group__Intercept"]]^2 # group
 var_cov <- dr[["sd_cov_group__Intercept"]]^2 # cov
 ## Residual (distribution-specific) variance
 var_res <- dr[["sigma"]]^2
-## total variance
-var_total <- var_fix + var_iid + var_cov + var_res
 
 ## Relative var of random effects
 target_var <- var_iid / (var_iid + var_cov)
 c(mean(target_var), sd(target_var), quantile(target_var, probs = c(0.025, 0.975)))
 hypothesis(mod_g, class = NULL, "sd_sp_group__Intercept^2 / (sd_sp_group__Intercept^2 + sd_cov_group__Intercept^2) =0")
 
-## nagakawa R2
-R2_marg_draws <- var_fix / var_total
-R2_cond_draws <- (var_fix + var_iid + var_cov) / var_total
+## R2
+# 1. nagakawa R2 using
+R2_marg_draws <- var_fix / (var_fix + var_iid + var_cov + var_res)
+R2_cond_draws <- (var_fix + var_iid + var_cov) / (var_fix + var_iid + var_cov + var_res)
 mean(R2_cond_draws)
 mean(R2_marg_draws)
 r2_nakagawa(mod_g)
 
-## Bayes_r2. Expected values per draw (includes fixed + random effects)
-mu_draws <- posterior_epred(mod_g)         # at response scale
-var_mu   <- apply(mu_draws, 1, var)        # Var(mu) per draw
-target_var <- var_mu / (var_mu + var_res)
-c(mean(target_var), sd(target_var), quantile(target_var, probs = c(0.025, 0.975)))
+# 2. Bayes_r2. Expected values per draw (includes fixed + random effects)
+# Observations
+y <- as.numeric(get_response(mod_g))
+# Expected values per draw
+y_draws <- posterior_epred(mod_g)
+# Empirical residuals per draw (response scale)
+e_draws <- -sweep(y_draws, 2, y)
+# per-draw variances across observations
+var_ypred <- apply(y_draws, 1, var)       # matches brms' .bayes_R2()
+var_e     <- apply(e_draws, 1, var)
+
+R2_bayes_hand <- var_ypred / (var_ypred + var_e)
+c(mean(R2_bayes_hand), sd(R2_bayes_hand), quantile(target_var, probs = c(0.025, 0.975)))
 bayes_R2(mod_g)
 
 # ===== Negative Binomial GLMM (log link) =====

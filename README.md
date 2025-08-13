@@ -39,7 +39,7 @@ library(easystats)
 - Hand calculate bayesian R2, basically the empirical R2 = var_mu / (var_mu + var_res), whereas var_mu is the var of predicted response, var_res is the empirical residual variance
     - Bayesian R2 is estaimted at the response (data, or count) scale
 - Estimate probability of zero inflation
-- For GLM, tt's tricky to calculate the R2 in glm because of the latent vs response scales
+- For GLM, it's tricky to calculate the R2 in glm because of the latent vs response scales
 
 
 ### Generalized linear mixed model
@@ -60,8 +60,27 @@ library(easystats)
 
 `glmm_cov.R`
 
-- GLMM with a single covariance matrix as randolm effects
-- Test two repsonses: gaussian and negative binomial
+- GLMM with a group factor and a covariance matrix as random effects
+- Test 3 responses: gaussian, negative binomial, and ZINB
+- Compute three R2:
+    - GLMM R2 (nagakawa) on the link (linear) scale. It allows variance partitioning
+    - Bayesian R2 on the response scale. It allows "how much var in the response is explained by the model"
+    - semi-partial "part R2" on bayesian R2. 
+
+### GLMM with nested random effects
+
+`glmm_nes.R`
+
+- GLMM with two random effects, and they are nested
+- test brms and glmmTMB
+- Test 3 responses: gaussian, negative binomial, and ZINB
+- Variance components of random effects
+    - Laten scale
+    - Respsone scale
+- Compute three R2:
+    - GLMM R2 (nagakawa) on the link (linear) scale. It allows variance partitioning. This does not work for zero inflation
+    - Bayesian R2 on the response scale. It allows "how much var in the response is explained by the model"
+    - semi-partial "part R2" on bayesian R2.  -> no it's for fixed effects
 
 
 ### Phylogenetic linear mixed model 
