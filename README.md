@@ -47,12 +47,21 @@ library(easystats)
 `glmm.R`
 
 - Compare `glmmTMB` and `brm`
-- Simulate a poisson  binomial
+- Simulate 6 types of response distributions as in glm.R
 - Random effect only includes one predictor (`group`)
-- Hand calculate Pearson residual
-- Bayesian R2
-- Estimate random effect of each group by the mean across posterior samples
-- Estimate the posterior distribution of proportion of variance explained by random effects
+- Hand calculate Pearson residuals
+- Calculate R2_GLMM
+    - Use `insight::get_variance` to obtain the variance of fixed, random effects, and residuals
+    - Marginal R2 only includes fixed effects. var(fix) / (var(fix) + var(ran) + var(res))
+    - Conditional R2 includes both fixed and random effects. (var(fix) + var(ran)) / (var(fix) + var(ran) + var(res))
+- Calculate Bayesian R2 from empirical draws R2 = var_mu / (var_mu + var_res)
+
+### GLMM with covariance matrix 
+
+`glmm_cov.R`
+
+- Testing simple covariance matrix
+
 
 ### Phylogenetic linear mixed model 
 
@@ -65,12 +74,6 @@ library(easystats)
 - Sampling from a multivariate Gaussian based on a cov is equivalent to sampling from a gaussian multiplied by the Cholesky decomposition of the cov
 
 - Well it seems that the estimate of phylo variance is only trustworthy when there are 50-100 species
-
-### GLMM with covariance matrix 
-
-`glmm_cov.R`
-
-- Testing simple covariance matrix
 
 
 ### Phylogenetic generalized linear mixed model

@@ -48,8 +48,8 @@ k = 10 # dispersion parameter k. var(NB) = mu + mu^2/k
 Y3 <- rnbinom(n_total, mu = exp(eta), size = k)
 
 ## 4. Zero-inflated negative binomial with constant zi
-p_zero <- 0.2 # probability of zero inflation
-inflate <- rbinom(n_total, size = 1, prob = p_zero)
+p_zero <- 0.2 # probability of zeros
+inflate <- rbinom(n_total, size = 1, prob = 1-p_zero)
 counts <- rnbinom(n_total, mu = exp(eta), size = k)
 Y4 <- counts*inflate
 
@@ -68,42 +68,218 @@ tb %>%
     theme_bw()
 
 # Exampling on negative binomial ----
-# Frequentist
+## Fit
 mod <- glmmTMB(Y3 ~ X + (1|species), data = tb, family = nbinom2)
 summary(mod)
 
-# Residual at the response scale
-var(resid(mod, type = "response"))
-var(Y3 - predict(mod, type = "response"))
 
-## Pearson residual = (y - y_hat) / sqrt(var(y_hat))
+## Residuals on the response scale
+# In glmmTMB, type = "response" residuals are y - mu_hat
+r_resp <- resid(mod, type = "response")
 mu_hat <- predict(mod, type = "response")
-k <- sigma(mod) # dispersion parameter. not the sigma in lm
-var_nb <- mu_hat + mu_hat^2 / k # the residual variance of NB is mu + mu^2/k
-var((Y3 - mu_hat) / sqrt(var_nb)) # Pearson residual, (y - mu_hat)  / sqrt(total var)
-var(resid(mod, type = "pearson"))
 
-# Random effects
-summary(mod)
-VarCorr(mod)[[1]][[1]][1] # Model based theoretical estimate of the entire random effect distribution
-as_tibble(ranef(mod))[["condval"]] %>% var # Empirical BLUPs (Best Linear Unbiased Predictors) for each group
+var(r_resp)
+var(tb$Y3 - mu_hat)  # same as above
 
-# Variance at the response scale
-## Total variance minus those explained by residuals
-#mu_pop <- exp(fixef(mod)$cond[1] + fixef(mod)$cond[2])
-fixef_val <- fixef(mod)$cond[1] # Fixed effect (intercept)
-rand_intercepts <- ranef(mod)[[1]]$species$`(Intercept)`
-mu_species <- exp(fixef_val + rand_intercepts)
-var_ran_response <- var(mu_species) # variance of expected counts per species
+## Pearson residuals (manual vs built-in)
+## For NB2: Var(Y|mu) = mu + mu^2/theta, where 'theta' is the NB parameter.
+## In glmmTMB, sigma(mod) returns 'theta' for NB2 families.
+theta <- sigma(mod)                       # NB 'theta'. Not the signal in LM
+var_nb <- mu_hat + (mu_hat^2)/theta       # model-implied var at each mu
+r_pear_hand <- (tb$Y3 - mu_hat) / sqrt(var_nb)
 
-residuals <- Y3 - predict(mod, type = "response")
-var_res <- var(residuals)
-var_ran_response / (var_ran_response + var_res)
+var(r_pear_hand)                          # variance of hand-computed Pearson residuals
+var(resid(mod, type = "pearson"))         # variance of built-in Pearson residuals (should be close)
+
+## (Optional) quick overdispersion check (should be ~1 if well-specified)
+pearson_chisq <- sum(resid(mod, type = "pearson")^2)
+pearson_chisq / df.residual(mod) # disp_ratio
+
+## Random effects: model-based vs empirical BLUP variance
+# Model-based variance component (random-intercept variance for 'species')
+# VarCorr(mod) returns a list with $cond (conditional model). Extract the variance element:
+# estimated heterogeneity among groups (species here) on the link-function scale,
+vc <- VarCorr(mod)
+vc$cond$species[1, 1]   # variance of the random intercept distribution (tau^2)
+
+# Empirical BLUPs (conditional modes) for each species level
+# NOTE: BLUPs are shrunken; their sample variance will be < tau^2.
+# They’re estimated from your finite data.
+re_species <- ranef(mod)$cond$species[[1]]  # random-intercept values per group
+var(re_species)
+
+## r2: built-in vs hand calculation
+# r2() built-in
 r2(mod)
 
-# Bayesian ----
+# Hand calculation
+# 1. Variance of fixed-effect predictions (linear predictor scale)
+## Approach 1-1. By formula
+X_fix <- model.matrix(formula(mod, fixed.only = T), tb)
+beta_hat <- fixef(mod)$cond # fixed effect estimates
+var(as.vector(X_fix %*% beta_hat))
+## Approach 1-2. Using predict
+eta_hat <- predict(mod, type = "link", re.form = NA)  # fixed effects only, at link function scale. # linear predictor without REs
+var_fix <- var(eta_fix)
+## Approach 1-3. Use insight
+get_variance_fixed(mod)
+
+# 2. Variance of random effects (linear predictor scale)
+## Approach 2-1. Use VarCorr
+vc <- VarCorr(mod)$cond$species
+var_rand <- vc[1, 1]  # tau^2 for species
+## Approach 2-2. Use insight
+get_variance_random(mod)
+
+# 3. Distribution-specific residual variance
+## Approach. Use insight
+var_resid <- get_variance_residual(mod, approximation = "lognormal") # default is approximation = "lognormal"
+
+# 4. Marginal and Conditional R2
+R2_marg <- var_fix / (var_fix + var_rand + var_resid)
+R2_cond <- (var_fix + var_rand) / (var_fix + var_rand + var_resid)
+c(R2_cond = R2_cond, R2_marg = R2_marg)
+r2(mod)
+r2_nakagawa(mod)
+
+
+## Bayesian
 mod2 <- brm(Y3 ~ X + (1|species), data = tb, family = negbinomial, chains = 2, cores = 2, iter = 10000, thin = 10, seed = 123)
 
 pp_check(mod2) # Posterior predictive checks
 fixef(mod2) # Fixed effect estimates
+
+# Empirical R2 computed from posterior draws (bayes_R2). R2_draw = Var(mu_draw) / ( Var(mu_draw) + Var(y - mu_draw) )
+r2_from_draws <- function(mod, ndraws = NULL) {
+    mu <- posterior_epred(mod, ndraws = ndraws)  # draws x N; on response scale; includes ZI if any
+    y  <- model.response(model.frame(mod)) # Extract observed response generically
+
+    var_mu   <- apply(mu, 1, var)
+    var_res  <- apply(mu, 1, function(m) var(y - m))
+    r2_draws <- var_mu / (var_mu + var_res)
+
+    tibble(
+        mean   = mean(r2_draws),
+        sd     = sd(r2_draws),
+        q2.5   = quantile(r2_draws, 0.025),
+        q50    = quantile(r2_draws, 0.50),
+        q97.5  = quantile(r2_draws, 0.975)
+    )
+}
+
+# Variance and bayesian R2, which is computed at the latent scale
+r2_from_draws(mod2)
 bayes_R2(mod2)
+
+
+
+# Frequenstist ----
+tb_freq <- tibble(name = paste0("Y", c("", 1:5)), mod = rep(list(NA), 6))
+
+tb_freq$mod[[1]] <- glmmTMB(Y ~ X + (1|species), data = tb, family = gaussian)
+tb_freq$mod[[2]] <- glmmTMB(Y1 ~ X + (1|species), data = tb, family = binomial(link = "logit"))
+tb_freq$mod[[3]] <- glmmTMB(Y2 ~ X + (1|species), data = tb, family = poisson)
+tb_freq$mod[[4]] <- glmmTMB(Y3 ~ X + (1|species), data = tb, family = nbinom2)
+tb_freq$mod[[5]] <- glmmTMB(Y4 ~ X + (1|species), data = tb, family = poisson, ziformula = ~1)
+tb_freq$mod[[6]] <- glmmTMB(Y5 ~ X + (1|species), data = tb, family = nbinom2, ziformula = ~1)
+
+## Gaussian. marginal r2 = var(fix) / (var(fix) + var(ran) + sigma^2)
+var_fix <- get_variance_fixed(tb_freq$mod[[1]])
+var_ran <- get_variance_random(tb_freq$mod[[1]])
+var_res <- get_variance_residual(tb_freq$mod[[1]])
+
+(var_fix + var_ran) / (var_fix + var_ran + var_res) # conditional R2
+var_fix / (var_fix + var_ran + var_res) # marginal R2
+r2(tb_freq$mod[[1]])
+
+## Logistic. p(1-p)
+var_fix <- get_variance_fixed(tb_freq$mod[[2]])
+var_ran <- get_variance_random(tb_freq$mod[[2]])
+var_res <- get_variance_residual(tb_freq$mod[[2]])
+
+(var_fix + var_ran) / (var_fix + var_ran + var_res) # conditional R2
+var_fix / (var_fix + var_ran + var_res) # marginal R2
+r2(tb_freq$mod[[2]])
+
+## Poisson
+var_fix <- get_variance_fixed(tb_freq$mod[[3]])
+var_ran <- get_variance_random(tb_freq$mod[[3]])
+var_res <- get_variance_residual(tb_freq$mod[[3]])
+
+(var_fix + var_ran) / (var_fix + var_ran + var_res) # conditional R2
+var_fix / (var_fix + var_ran + var_res) # marginal R2
+r2(tb_freq$mod[[3]])
+
+## Negative binomial
+var_fix <- get_variance_fixed(tb_freq$mod[[4]])
+var_ran <- get_variance_random(tb_freq$mod[[4]])
+var_res <- get_variance_residual(tb_freq$mod[[4]])
+
+(var_fix + var_ran) / (var_fix + var_ran + var_res) # conditional R2
+var_fix / (var_fix + var_ran + var_res) # marginal R2
+r2(tb_freq$mod[[4]])
+
+## Zero-inflated poisson
+var_fix <- get_variance_fixed(tb_freq$mod[[5]])
+var_ran <- get_variance_random(tb_freq$mod[[5]])
+var_res <- get_variance_residual(tb_freq$mod[[5]])
+
+(var_fix + var_ran) / (var_fix + var_ran + var_res) # conditional R2
+var_fix / (var_fix + var_ran + var_res) # marginal R2
+r2(tb_freq$mod[[5]])
+
+## Zero-inflated negative binomial
+var_fix <- get_variance_fixed(tb_freq$mod[[6]])
+var_ran <- get_variance_random(tb_freq$mod[[6]])
+var_res <- get_variance_residual(tb_freq$mod[[6]])
+
+(var_fix + var_ran) / (var_fix + var_ran + var_res) # conditional R2
+var_fix / (var_fix + var_ran + var_res) # marginal R2
+r2(tb_freq$mod[[6]])
+
+
+# Bayesian  ----
+tb_baye <- tibble(name = paste0("Y", c("", 1:5)), mod = rep(list(NA), 6))
+tb_baye$mod[[1]] <- brm(Y ~ X + (1|species), data = tb, family = gaussian, chains = 2, cores = 2, iter = 10000, thin = 10, seed = 123, control = list(adapt_delta = 0.95))
+tb_baye$mod[[2]] <- brm(Y1 ~ X + (1|species), data = tb, family = bernoulli, chains = 2, cores = 2, iter = 10000, thin = 10, seed = 123, control = list(adapt_delta = 0.95))
+tb_baye$mod[[3]] <- brm(Y2 ~ X + (1|species), data = tb, family = poisson, chains = 2, cores = 2, iter = 10000, thin = 10, seed = 123, control = list(adapt_delta = 0.95))
+tb_baye$mod[[4]] <- brm(Y3 ~ X + (1|species), data = tb, family = negbinomial, chains = 2, cores = 2, iter = 10000, thin = 10, seed = 123, control = list(adapt_delta = 0.95))
+tb_baye$mod[[5]] <- brm(bf(Y4 ~ X + (1|species), zi ~ 1), data = tb, family = zero_inflated_poisson, chains = 2, cores = 2, iter = 10000, thin = 10, seed = 123, control = list(adapt_delta = 0.95))
+tb_baye$mod[[6]] <- brm(bf(Y5 ~ X + (1|species), zi ~ 1), data = tb, family = zero_inflated_negbinomial, chains = 2, cores = 2, iter = 10000, thin = 10, seed = 123, control = list(adapt_delta = 0.95))
+
+# Variance and bayesian R2, which is computed at the latent scale
+## Gaussian
+pp_check(tb_baye$mod[[1]])
+r2_from_draws(tb_baye$mod[[1]])
+bayes_R2(tb_baye$mod[[1]])
+
+## Logistic
+pp_check(tb_baye$mod[[2]])
+r2_from_draws(tb_baye$mod[[2]])
+bayes_R2(tb_baye$mod[[2]])
+
+## Poisson
+pp_check(tb_baye$mod[[3]])
+r2_from_draws(tb_baye$mod[[3]])
+bayes_R2(tb_baye$mod[[3]])
+
+## Negative binomial
+pp_check(tb_baye$mod[[4]])
+as_draws_df(tb_baye$mod[[4]])$shape %>% median # estimated dispersion parameter
+r2_from_draws(tb_baye$mod[[4]])
+bayes_R2(tb_baye$mod[[4]])
+
+## ZIP
+pp_check(tb_baye$mod[[5]])
+z <- as_draws_df(tb_baye$mod[[5]])$Intercept_zi
+(exp(z) / (1+exp(z))) %>% mean # probability of an observation to be structurally zero
+r2_from_draws(tb_baye$mod[[5]])
+bayes_R2(tb_baye$mod[[5]])
+
+## ZINB
+pp_check(tb_baye$mod[[6]])
+as_draws_df(tb_baye$mod[[6]])$shape %>% median # estimated dispersion parameter
+z <- as_draws_df(tb_baye$mod[[6]])$Intercept_zi
+(exp(z) / (1+exp(z))) %>% mean # probability of an observation to be structurally zero
+r2_from_draws(tb_baye$mod[[6]])
+bayes_R2(tb_baye$mod[[6]])

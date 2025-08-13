@@ -1,9 +1,10 @@
-#' Simulate covariance matrix as the random effect
+#' Simulate covariance matrix as the random effect in glmm
 
 library(tidyverse)
 library(easystats)
 library(brms)
 
+# Simulation ----
 # Example data with grouping factor
 set.seed(123)
 n_groups <- 10

@@ -35,7 +35,7 @@ k = 10 # dispersion parameter k. var(NB) = mu + mu^2/k
 Y3 <- rnbinom(n_total, mu = exp(eta), size = k)
 
 ## 4. Zero-inflated poisson
-p_zero <- 0.2 # probability of zero inflation
+p_zero <- 0.2 # probability of zeros
 inflate <- rbinom(n_total, size = 1, prob = 1-p_zero)
 counts <- rpois(n_total, lambda = exp(eta))
 Y4 <- counts*inflate
@@ -100,7 +100,7 @@ tb_freq$mod[[4]] <- glmmTMB(Y3 ~ X, data = tb, family = nbinom2)
 tb_freq$mod[[5]] <- glmmTMB(Y4 ~ X, data = tb, family = poisson, ziformula = ~1)
 tb_freq$mod[[6]] <- glmmTMB(Y5 ~ X, data = tb, family = nbinom2, ziformula = ~1)
 
-# Manually compute vairance based R2
+# Manually compute variance based R2
 ## Gaussian. var(fit) / (var(fit) + sigma^2)
 var_fit <- var(fitted(tb_freq$mod[[1]]))
 var_fit / (var_fit + sigma(tb_freq$mod[[1]])^2)
@@ -118,7 +118,6 @@ r2(tb_freq$mod[[2]])
 ### Latent scale (Nakagawa & Schielzeth)
 eta <- predict(tb_freq$mod[[2]], type = "link")
 var(eta) / (var(eta) + (pi^2/3))
-
 
 ## Poisson. var(poi) = mean(mu)
 ### Data (count) scale
