@@ -60,7 +60,8 @@ library(easystats)
 
 `glmm_cov.R`
 
-- Testing simple covariance matrix
+- GLMM with a single covariance matrix as randolm effects
+- Test two repsonses: gaussian and negative binomial
 
 
 ### Phylogenetic linear mixed model 
