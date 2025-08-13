@@ -83,9 +83,37 @@ library(easystats)
     - semi-partial "part R2" on bayesian R2.  -> no it's for fixed effects
 
 
-### Phylogenetic linear mixed model 
 
-`plmm.R`
+
+### Phylogenetic generalized linear mixed model
+
+`pglmm.R`
+
+- Only `brm`
+- Random effect includes phylogenetic effect (`phylo_cov`) and species effect that is not captured by shared phylogeny (`species`), and nested random effect (`species:genotype`)
+    - Y ~ X + (1|gr(phylo, cov = A_ord)) + (1|species) + (1|species:genotype)
+- Phylogenetic effect is sampled from Multivariate Normal Distribution based on the phylo covariance matrix
+- Multiple measurements per species
+- Three responses that share the same linear predictor: 
+    - Gaussian
+    - Negative binomial
+    - Zero-inflated Negative binomial
+- Compute two types of R2
+    - Nagakawa R2 at latent scale
+    - Bayesian R2 at reponse scale
+- Compute two types of relative RE contribution
+    - Latent scale. This is suppoted by `brms::hypothesis`
+    - Response scale. This needs conversion based on link function
+- If the number of species is too small, the intrinsic variation in NB can mask phylogenetic and species effect.
+
+
+
+
+## Deprecated
+
+### Phylogenetic linear mixed model (deprecated)
+
+`plmm.R` deprecated
 
 - Only `brm`
 - Random effect includes phylogenetic effect (`phylo_cov`)
@@ -95,23 +123,9 @@ library(easystats)
 
 - Well it seems that the estimate of phylo variance is only trustworthy when there are 50-100 species
 
+### Phylogenetic generalized linear mixed model with different distribution (deprecated)
 
-### Phylogenetic generalized linear mixed model
-
-`pglmm.R`
-
-- Only `brm`
-- Random effect includes phylogenetic effect (`phylo_cov`) and species effect that is not captured by shared phylogeny (`species`)
-- Phylogenetic effect is sampled from Multivariate Normal Distribution based on the phylo covariance matrix
-- Generate counts by negative binomial
-- Multiple measurements per species
-- Compare two models: species mean or raw species value
-
-- If the number of species is too small, the intrinsic variation in NB can mask phylogenetic and species effect.
-
-### Phylogenetic generalized linear mixed model with different distribution
-
-`pglmm2.R`
+`pglmm2.R`  (deprecated)
 
 - Generate counts by zero-inflated negative binomial
 
