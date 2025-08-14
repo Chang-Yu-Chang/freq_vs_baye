@@ -1,7 +1,44 @@
-#
+#' Just to learn some statistic distributions
 
 library(tidyverse)
 
+# R functions ----
+# In R, every distribution comes as a family of four functions with the same suffix:
+# dname: density / mass function → “what’s the height at x?”
+# pname: cumulative distribution function (CDF) → “what’s P(X ≤ x)?”
+# qname: quantile function (inverse CDF) → “what x gives me P(X ≤ x) = p?”
+# rname: random generation → “give me n samples”
+# Density at x = 1.96 for N(0,1)
+dnorm(1.96)
+# P(|Z| <= 1.96)
+pnorm(1.96) # 0.975
+# Two-sided z-test tail area: P(|Z| ≥ 1.96)
+pnorm(1.96, lower.tail = FALSE) # 0.025
+2*pnorm(1.96, lower.tail = FALSE) # this gives right tail prob without 1-p
+# 97.5th percentile (useful for 95% CI endpoints)
+qnorm(0.975)
+# Simulate
+set.seed(1); rnorm(5, mean=10, sd=2)
+
+# Counts
+lambda = 2
+# P(X = 0) when X ~ Pois(λ=2)
+dpois(0, lambda)
+# P(X ≤ 3) when X ~ Pois(λ=2)
+ppois(3, lambda=2)
+# Upper tail: P(X ≥ 4) is P(X > 3) = 1 - P(X ≤ 3)
+ppois(3, lambda, lower.tail = FALSE)
+1-ppois(3, lambda)
+# Interval probability: P(4 ≤ X ≤ 8)
+ppois(8, lambda) - ppois(3, lambda)
+# Quantiles
+qpois(0.95, lambda)   # 95th percentile
+# random draws
+rpois(10, lambda)
+
+
+
+# Plot distributions ----
 # Gaussian
 rnorm(1000, mean = 0, sd = 1) %>% hist(100)
 
@@ -57,3 +94,30 @@ p = 0.5
 mu = k * (1-p) / p
 rnbinom(10000, prob = p, size = k) %>% hist(100)
 rnbinom(10000, mu = mu, size = k) %>% hist(100)
+
+
+# zero-truncated, zero inflated, zero-altered (hurdle)
+n = 10000
+pi0 <- 0.2     # 20% structural zeros
+lambda = 10
+
+## Zero truncated
+rztpois <- function(n, lambda) {
+    u <- runif(n, min = .Machine$double.eps, max = 1)
+    qpois(u * (1 - exp(-lambda)) + exp(-lambda), lambda)
+}
+rztpois(1000, lambda) %>% hist
+
+## Zero-Inflated Poisson (ZIP): with prob pi_zero -> forced zero; else Poisson(lambda)
+z <- rbinom(n, 1, pi0)               # 1 = structural zero
+y <- rpois(n, lambda)                     # sampling zeros also possible
+y[z == 1] <- 0L
+hist(y)
+
+## Hurdle Poisson: with prob pi_zero -> zero; else positive via zero-trunc Poisson
+y <- integer(n) # all 0s
+is_pos <- rbinom(n, 1, 1 - pi0)      # 1 = crosses the hurdle
+k <- sum(is_pos == 1)
+if (k > 0) y[is_pos == 1] <- rztpois(k, lambda)
+hist(y)
+table(y == 0) # roughly 20% is 0s

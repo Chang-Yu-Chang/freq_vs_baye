@@ -7,6 +7,27 @@ library(brms)
 library(easystats)
 ```
 
+### Distributions
+
+`distributions.R`
+
+- Learn about d, p, q, r functions
+    - d: density. what's the height when at x?
+    - p: CDF. What's P(X<=x)?
+    - q: quantile, or inverse CDF. What x gives me P(X<=x) = p, with a given p?
+    - r: random sampling
+- Some distributions
+    - Gaussian
+    - Mulivariate Gaussian
+    - Poisson: number of events that happens over a fixed period of time
+    - Binomial: number of "successes" in a fixed number of tries
+    - Negative binomial: number of "failures" until you get a certain number of successes (k)
+- Zeros
+    - Zero-truncated: no zeros 
+    - Zero-inflated: structural 0s and then normal poisson/NB
+    - Zero-altered (hurdle): structural 0s and then zero-truncated poisson/NB
+
+
 ### Ordinary linear regression 
 
 `lm.R`
